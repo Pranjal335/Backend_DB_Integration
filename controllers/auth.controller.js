@@ -1,6 +1,7 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const redisClient = require("../redisClient");
 
 exports.signup = async (req,res) =>{
     const {name, email, password} = req.body;
@@ -34,8 +35,21 @@ exports.login = async (req, res) =>{
             expiresIn: "1h",
         });
 
-        res.json({token});
+        // ✅ Store token manually in Redis with expiry
+        await redisClient.set(`auth:token:${user._id}`, token, {
+            EX: 60 * 60, // 1 hour
+          });
+        // ✅ Store user info in session (this gets stored in Redis via express-session + connect-redis)
+ 
+        //   req.session.user = {
+        //     id: user._id,
+        //     email: user.email,
+        // };
+
+
+        res.json({ message: "Login successful", token });
     }catch(err){
         res.status(500).json({message: "Server error"});
     }
 };
+
