@@ -31,25 +31,42 @@ exports.login = async (req, res) =>{
         const isMatch = await bcrypt.compare(password,user.password);
         if(!isMatch) return res.status(401).json({message: "Invalid Credentials"})
 
-        const token = jwt.sign({id: user._id}, process.env.JWT_SECRET, {
-            expiresIn: "1h",
-        });
-
-        // ✅ Store token manually in Redis with expiry
-        await redisClient.set(`auth:token:${user._id}`, token, {
-            EX: 60 * 60, // 1 hour
-          });
-        // ✅ Store user info in session (this gets stored in Redis via express-session + connect-redis)
- 
-        //   req.session.user = {
-        //     id: user._id,
-        //     email: user.email,
-        // };
-
-
+        const token = jwt.sign(
+            { id: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "1h" }
+          );
         res.json({ message: "Login successful", token });
     }catch(err){
         res.status(500).json({message: "Server error"});
     }
 };
 
+exports.logout = async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "No token provided" });
+      }
+  
+      const token = authHeader.split(" ")[1];
+  
+      // Decode to get expiry time
+      const decoded = jwt.decode(token);
+  
+      if (!decoded || !decoded.exp) {
+        return res.status(400).json({ message: "Invalid token" });
+      }
+  
+      const expiry = decoded.exp - Math.floor(Date.now() / 1000); // time in seconds until expiration
+  
+      // Blacklist token in Redis
+      await redisClient.set(`bl_${token}`, token, 'EX', expiry);
+  
+      res.json({ message: "Logged out successfully" });
+    } catch (err) {
+      console.error("Logout Error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
+  };
+  
